@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dashboard Financeiro — Executivo (Single File)</title>
+
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Tom Select for searchable multiselects -->
+  <link href="https://cdn.jsdelivr.net/npm/tom-select/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#f6f7fb; --card:#ffffff; --muted:#6c757d; --accent:#0d6efd; --text:#212529; --glass: rgba(255,255,255,0.7);
+    }
+    body{ background:var(--bg); color:var(--text); font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding-bottom:60px; }
+    .card{ border:none; background:linear-gradient(180deg,var(--card),var(--glass)); border-radius:10px; box-shadow:0 6px 18px rgba(20,20,50,0.06); }
+    .kpi-card{ padding:1rem; border-radius:10px; min-height:100px; }
+    .kpi-value{ font-weight:700; font-size:1.25rem; }
+    .kpi-label{ color:var(--muted); font-size:0.85rem; }
+    .main-chart-card{ padding:0; border-radius:12px; box-shadow:0 12px 36px rgba(10,20,50,0.12); border:1px solid rgba(13,110,253,0.12); }
+    .main-chart-card .btn-group .btn.active, .main-chart-card .btn-group .btn:focus{ box-shadow:0 4px 12px rgba(13,110,253,0.15); }
+    @media (max-width:768px){ .card-body canvas { max-height:320px; } .main-chart-card .card-body{ padding:.75rem; } }
+    body.dark{ --bg:#0b1020; --card:#0f1724; --muted:#9aa4bf; --accent:#4ea8ff; --text:#e6eef8; --glass: rgba(255,255,255,0.02); }
+    nav.navbar{ box-shadow:0 6px 18px rgba(20,20,50,0.06); }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-primary mb-3">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">Dashboard Financeiro — Executivo</span>
+      <div class="d-flex gap-2 align-items-center">
+        <button id="themeToggle" class="btn btn-outline-light btn-sm">Modo Escuro</button>
+        <button id="exportPNG" class="btn btn-outline-light btn-sm">Exportar PNG</button>
+        <button id="exportCSV" class="btn btn-outline-light btn-sm">Exportar CSV</button>
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm" style="width:220px" />
+      </div>
+    </div>
+  </nav>
+
+  <main class="container-fluid mb-5" id="dashboard">
+    <!-- Filters -->
+    <section class="row mb-3">
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <form id="filtersForm" class="row g-2 align-items-end">
+              <div class="col-md-2"><label class="form-label">Empresa</label><select id="filterEmpresa" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Cliente</label><select id="filterCliente" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Centro de custo</label><select id="filterCentro" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Unidade</label><select id="filterUnidade" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Origem</label><select id="filterOrigem" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Status da parcela</label><select id="filterStatus" multiple></select></div>
+
+              <div class="col-md-2"><label class="form-label">Operação</label><select id="filterOperacao" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Portador</label><select id="filterPortador" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Ano</label><select id="filterAno" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Trimestre</label><select id="filterTrimestre" multiple></select></div>
+              <div class="col-md-2"><label class="form-label">Mês</label><select id="filterMes" multiple></select></div>
+
+              <div class="col-auto">
+                <button id="clearFilters" type="button" class="btn btn-secondary">Limpar Filtros</button>
+                <small class="text-muted d-block">Filtros com pesquisa e multiseleção</small>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cards -->
+    <section class="row g-3 mb-3" id="cardsRow"></section>
+
+    <!-- Main chart (destaque) -->
+    <section class="row mb-3">
+      <div class="col-12">
+        <div class="card shadow-lg main-chart-card border-primary">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <div>
+              <h4 class="mb-0">Evolução das Receitas (Linha)</h4>
+              <small class="text-muted">Linha contínua — meses sem faturamento aparecem como R$ 0,00</small>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-primary" data-range="1">1M</button>
+                <button class="btn btn-outline-primary" data-range="3">3M</button>
+                <button class="btn btn-outline-primary" data-range="6">6M</button>
+                <button class="btn btn-outline-primary" data-range="12">12M</button>
+                <button class="btn btn-outline-primary active" data-range="all">All</button>
+              </div>
+              <div class="form-check form-switch ms-2">
+                <input class="form-check-input" type="checkbox" id="toggleMA"><label class="form-check-label small" for="toggleMA">Média Móvel</label>
+              </div>
+              <div class="form-check form-switch ms-2">
+                <input class="form-check-input" type="checkbox" id="toggleCum"><label class="form-check-label small" for="toggleCum">Cumulativo</label>
+              </div>
+              <button id="resetZoom" class="btn btn-outline-secondary btn-sm">Reset Zoom</button>
+              <button id="exportSeries" class="btn btn-sm btn-primary">Exportar Série CSV</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div style="height:420px"><canvas id="mainLineChart" height="420"></canvas></div>
+            <div class="mt-2 d-flex justify-content-between"><small class="text-muted" id="mainChartSummary">Dados atualizados conforme filtros.</small><small class="text-muted">Use scroll/pinçar para zoom • Arraste para pan</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Secondary charts -->
+    <section class="row g-3">
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Receita por Empresa</strong></div><div class="card-body"><canvas id="chartEmpresa"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Receita por Centro de Custo</strong></div><div class="card-body"><canvas id="chartCentro"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Top 15 Clientes</strong></div><div class="card-body"><canvas id="chartClientes"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Receita por Origem</strong></div><div class="card-body"><canvas id="chartOrigem"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Receita por Unidade</strong></div><div class="card-body"><canvas id="chartUnidade"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Status das Parcelas</strong></div><div class="card-body"><canvas id="chartStatus"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Inadimplência</strong></div><div class="card-body"><canvas id="chartInadimplencia"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Evolução Anual</strong></div><div class="card-body"><canvas id="chartAnual"></canvas></div></div></div>
+      <div class="col-lg-6 col-md-12"><div class="card"><div class="card-header"><strong>Evolução Trimestral</strong></div><div class="card-body"><canvas id="chartTrimestral"></canvas></div></div></div>
+    </section>
+
+    <footer class="mt-4 text-center text-muted"><small>Arquitetura: HTML5 · CSS3 · JS · Chart.js · SheetJS · Tom Select</small></footer>
+  </main>
+
+  <!-- Libraries (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tom-select/dist/js/tom-select.complete.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  /* Single-file JS: leitura, detecção de colunas, calendário contínuo, agregações, charts e controles do gráfico principal */
+  (function(){
+    // State
+    const state = {
+      rawData: [], rows: [], columns: {}, calendar: [], aggregated: {}, charts: {}, filters: {},
+      settings: { dateFieldPriority:['Data da Baixa','data_baixa','DataBaixa','Data baixa'], movingAverageWindow:3 },
+      mainChart: { rangeMonths:'all', movingAverage:false, cumulative:false }
+    };
+
+    const $ = (s) => document.querySelector(s), $$ = (s) => Array.from(document.querySelectorAll(s));
+
+    // Utils
+    function parseCurrency(v){
+      if(v==null||v==='') return 0;
+      if(typeof v==='number') return v;
+      const cleaned = String(v).replace(/\s/g,'').replace(/\./g,'').replace(/,/g,'.').replace(/[^\d\.\-]/g,'');
+      const n = parseFloat(cleaned); return isNaN(n)?0:n;
+    }
+    function parseDate(val){
+      if(!val) return null;
+      if(typeof val === 'number'){
+        const epoch = new Date(Date.UTC(1899,11,30)); const dt = new Date(epoch.getTime() + (val * 24*3600*1000));
+        return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+      }
+      if(val instanceof Date) return new Date(val.getFullYear(), val.getMonth(), val.getDate());
+      const iso = new Date(val); if(!isNaN(iso)) return new Date(iso.getFullYear(), iso.getMonth(), iso.getDate());
+      const m = String(val).match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/); if(m){ const d=+m[1],mo=+m[2]-1,y=+m[3]; return new Date(y,mo,d); }
+      return null;
+    }
+    function formatBRL(v){ return v==null ? 'R$ 0,00' : (Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})); }
+    function formatDateKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+    function getWeekNumber(d){
+      const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const target = new Date(date.valueOf()); const dayNr = (date.getDay()+6)%7;
+      target.setDate(target.getDate() - dayNr + 3); const firstThursday = target.valueOf();
+      target.setMonth(0,1); if(target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+      return 1 + Math.ceil((firstThursday - target) / 604800000);
+    }
+
+    // File handling
+    async function handleFile(file){
+      const name = file.name.toLowerCase();
+      let data;
+      if(name.endsWith('.csv')){
+        const text = await file.text();
+        const wb = XLSX.read(text, {type:'string'});
+        data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      } else {
+        const ab = await file.arrayBuffer(); const wb = XLSX.read(ab, {type:'array'});
+        data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:''});
+      }
+      onDataLoaded(data);
+    }
+
+    function onDataLoaded(data){
+      state.rawData = data;
+      detectColumns();
+      normalizeRows();
+      buildCalendarFromData();
+      initFilters();
+      updateDashboard();
+    }
+
+    // Column detection (heuristic)
+    function detectColumns(){
+      const sample = state.rawData[0] || {}; const keys = Object.keys(sample); const map = {};
+      const find = (cands) => { for(const c of cands){ const k = keys.find(k=>k.toLowerCase().replace(/\s+/g,'')===c.toLowerCase().replace(/\s+/g,'')); if(k) return k; const k2 = keys.find(k=>k.toLowerCase().includes(c.toLowerCase())); if(k2) return k2; } return null; };
+      map.empresa = find(['Empresa','company']); map.centro = find(['Centro de custo','cost center']); map.unidade = find(['Unidade','unit']); map.cliente = find(['Cliente','customer']);
+      map.documento = find(['Documento','Doc','Número']); map.origem = find(['Origem','Fonte','Source']); map.status = find(['Status da parcela','Status','status']);
+      map.operacao = find(['Operação','operation']); map.portador = find(['Portador']); map.inadimplente = find(['Inadimplente','inadimplente','delinquent']);
+      map.valor = find(['Valor da baixa','Valor','value','amount','valor_baixa']);
+      map.data = null;
+      for(const cand of state.settings.dateFieldPriority){ const k = keys.find(k=>k.toLowerCase().includes(cand.toLowerCase())); if(k){ map.data = k; break; } }
+      if(!map.data) map.data = keys.find(k=>k.toLowerCase().includes('data')) || keys.find(k=>k.toLowerCase().includes('date')) || null;
+      state.columns = map;
+      console.log('Colunas detectadas:', map);
+    }
+
+    function normalizeRows(){
+      state.rows = state.rawData.map((r, idx) => {
+        const c = state.columns;
+        return {
+          __rowIndex: idx,
+          Empresa: r[c.empresa] ?? '',
+          Centro: r[c.centro] ?? '',
+          Unidade: r[c.unidade] ?? '',
+          Cliente: r[c.cliente] ?? '',
+          Documento: r[c.documento] ?? '',
+          Origem: r[c.origem] ?? '',
+          Status: r[c.status] ?? '',
+          Operacao: r[c.operacao] ?? '',
+          Portador: r[c.portador] ?? '',
+          Inadimplente: (r[c.inadimplente] || '').toString().toLowerCase().includes('sim') || r[c.inadimplente]===true,
+          ValorBaixa: parseCurrency(r[state.columns.valor]) || 0,
+          DataBaixaRaw: r[state.columns.data] ?? null,
+          DataBaixa: parseDate(r[state.columns.data]) || null
+        };
+      });
+    }
+
+    // Calendar
+    function buildCalendarFromData(){
+      const dates = state.rows.map(r=>r.DataBaixa).filter(Boolean);
+      if(dates.length===0){ state.calendar = []; return; }
+      const min = new Date(Math.min(...dates.map(d=>d.getTime())));
+      const max = new Date(Math.max(...dates.map(d=>d.getTime())));
+      const start = new Date(min.getFullYear(), min.getMonth(), 1);
+      const end = new Date(max.getFullYear(), max.getMonth()+1, 0);
+      const arr = [];
+      for(let d = new Date(start); d <= end; d.setDate(d.getDate()+1)){
+        const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        arr.push({ date:new Date(dt), year:dt.getFullYear(), month:dt.getMonth()+1, monthName:dt.toLocaleString('pt-BR',{month:'long'}), yearMonth:`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`, quarter:Math.floor((dt.getMonth())/3)+1, semester:(dt.getMonth()<6)?1:2, week:getWeekNumber(dt), day:dt.getDate() });
+      }
+      state.calendar = arr;
+    }
+
+    // Aggregation
+    function aggregateData(){
+      const filters = state.filters || {};
+      let rows = state.rows.slice();
+      if(filters.Empresa && filters.Empresa.length) rows = rows.filter(r=>filters.Empresa.includes(String(r.Empresa)));
+      if(filters.Cliente && filters.Cliente.length) rows = rows.filter(r=>filters.Cliente.includes(String(r.Cliente)));
+      if(filters.Centro && filters.Centro.length) rows = rows.filter(r=>filters.Centro.includes(String(r.Centro)));
+      if(filters.Unidade && filters.Unidade.length) rows = rows.filter(r=>filters.Unidade.includes(String(r.Unidade)));
+      if(filters.Origem && filters.Origem.length) rows = rows.filter(r=>filters.Origem.includes(String(r.Origem)));
+      if(filters.Status && filters.Status.length) rows = rows.filter(r=>filters.Status.includes(String(r.Status)));
+      if(filters.Operacao && filters.Operacao.length) rows = rows.filter(r=>filters.Operacao.includes(String(r.Operacao)));
+      if(filters.Portador && filters.Portador.length) rows = rows.filter(r=>filters.Portador.includes(String(r.Portador)));
+      if(filters.Ano && filters.Ano.length) rows = rows.filter(r=>r.DataBaixa && filters.Ano.includes(String(r.DataBaixa.getFullYear())));
+      if(filters.Trimestre && filters.Trimestre.length) rows = rows.filter(r=>r.DataBaixa && filters.Trimestre.includes(String(Math.floor(r.DataBaixa.getMonth()/3)+1)));
+      if(filters.Mes && filters.Mes.length) rows = rows.filter(r=>r.DataBaixa && filters.Mes.includes(String(r.DataBaixa.getMonth()+1)));
+
+      const months = Array.from(new Set(state.calendar.map(c=>c.yearMonth))).sort();
+      const monthMap = new Map(months.map(m=>[m,0]));
+      rows.forEach(r=>{
+        const d = r.DataBaixa; if(!d) return;
+        const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        monthMap.set(ym, (monthMap.get(ym)||0) + Number(r.ValorBaixa||0));
+      });
+
+      const sumBy = (field) => { const map = new Map(); rows.forEach(r=>{ const k=(r[field] ?? 'N/A')||'N/A'; map.set(k,(map.get(k)||0)+Number(r.ValorBaixa||0)); }); return Array.from(map.entries()).map(([k,v])=>({key:k,value:v})).sort((a,b)=>b.value-a.value); };
+
+      const totalRevenue = rows.reduce((s,r)=>s+Number(r.ValorBaixa||0),0);
+      const parcelasCount = rows.length;
+      const clientesCount = new Set(rows.map(r=>r.Cliente || (r.Cliente===0?0:null)).filter(v=>v!=null)).size;
+      const empresasCount = new Set(rows.map(r=>r.Empresa || (r.Empresa===0?0:null)).filter(v=>v!=null)).size;
+      const valorRecebido = rows.filter(r=> r.Status && r.Status.toString().toLowerCase().includes('baixado')).reduce((s,r)=>s+Number(r.ValorBaixa||0),0);
+      const valorAberto = totalRevenue - valorRecebido;
+      const inadimplentesSum = rows.filter(r=>r.Inadimplente).reduce((s,r)=>s+Number(r.ValorBaixa||0),0);
+      const percentualInadimplencia = totalRevenue===0?0:(inadimplentesSum/totalRevenue)*100;
+      const receitaMedia = parcelasCount===0?0:totalRevenue/parcelasCount;
+      const ticketMedio = parcelasCount===0?0:totalRevenue/Math.max(clientesCount,1);
+
+      state.aggregated = {
+        filteredRows: rows,
+        monthSeries: { labels: months, values: months.map(m=>monthMap.get(m)||0) },
+        byEmpresa: sumBy('Empresa'),
+        byCentro: sumBy('Centro'),
+        byCliente: sumBy('Cliente'),
+        byOrigem: sumBy('Origem'),
+        byUnidade: sumBy('Unidade'),
+        byStatus: sumBy('Status'),
+        inadimplencia: { adimplente: totalRevenue - inadimplentesSum, inadimplente: inadimplentesSum },
+        anualSeries: aggregateAnnual(rows),
+        trimestralSeries: aggregateQuarter(rows),
+        metrics: { totalRevenue, receitaMedia, parcelasCount, clientesCount, empresasCount, valorAberto, valorRecebido, percentualInadimplencia, ticketMedio }
+      };
+    }
+    function aggregateAnnual(rows){
+      const map = new Map(); rows.forEach(r=>{ if(!r.DataBaixa) return; const y=r.DataBaixa.getFullYear(); map.set(y,(map.get(y)||0)+Number(r.ValorBaixa||0)); });
+      const arr = Array.from(map.entries()).sort((a,b)=>a[0]-b[0]); return { labels: arr.map(a=>String(a[0])), values: arr.map(a=>a[1]) };
+    }
+    function aggregateQuarter(rows){
+      const map = new Map(); rows.forEach(r=>{ if(!r.DataBaixa) return; const y=r.DataBaixa.getFullYear(); const q=Math.floor(r.DataBaixa.getMonth()/3)+1; const k=`${y}-Q${q}`; map.set(k,(map.get(k)||0)+Number(r.ValorBaixa||0)); });
+      const arr = Array.from(map.entries()).sort((a,b)=>a[0].localeCompare(b[0])); return { labels: arr.map(a=>a[0]), values: arr.map(a=>a[1]) };
+    }
+
+    // Rendering cards
+    function renderCards(){
+      const m = state.aggregated.metrics || {};
+      const container = $('#cardsRow'); container.innerHTML = '';
+      const cardData = [
+        {label:'Receita Total', value: formatBRL(m.totalRevenue)},
+        {label:'Receita Média', value: formatBRL(m.receitaMedia)},
+        {label:'Ticket Médio', value: formatBRL(m.ticketMedio)},
+        {label:'Quantidade de Clientes', value: m.clientesCount || 0},
+        {label:'Quantidade de Empresas', value: m.empresasCount || 0},
+        {label:'Quantidade de Parcelas', value: m.parcelasCount || 0},
+        {label:'Valor em Aberto', value: formatBRL(m.valorAberto)},
+        {label:'Valor Recebido', value: formatBRL(m.valorRecebido)},
+        {label:'% de Inadimplência', value: (m.percentualInadimplencia||0).toFixed(2) + '%'}
+      ];
+      for(const cd of cardData){
+        const col = document.createElement('div'); col.className = 'col-xl-2 col-lg-3 col-md-4 col-sm-6';
+        col.innerHTML = `<div class="card kpi-card"><div class="kpi-label">${cd.label}</div><div class="kpi-value">${cd.value}</div></div>`;
+        container.appendChild(col);
+      }
+    }
+
+    // Charts helpers
+    function destroyChart(id){ if(state.charts[id]){ try{ state.charts[id].destroy(); }catch(e){} delete state.charts[id]; } }
+    function generatePalette(n){ const base=['#0d6efd','#198754','#fd7e14','#6f42c1','#dc3545','#0dcaf0','#6610f2','#20c997','#ffc107','#0b5ed7','#d63384','#6c757d']; const out=[]; for(let i=0;i<n;i++) out.push(base[i%base.length]); return out; }
+    function movingAverage(values, windowSize){ if(windowSize<=1) return values.slice(); const out=[]; for(let i=0;i<values.length;i++){ const start=Math.max(0,i-windowSize+1); const slice=values.slice(start,i+1); out.push(slice.reduce((s,x)=>s+x,0)/slice.length); } return out; }
+
+    // Main line render (destaque)
+    function renderMainLine(){
+      const ctxEl = $('#mainLineChart'); if(!ctxEl) return;
+      const ctx = ctxEl.getContext('2d'); destroyChart('mainLine');
+
+      const allLabels = state.aggregated.monthSeries.labels.slice();
+      const allValues = state.aggregated.monthSeries.values.slice();
+      let labels = allLabels.slice(), values = allValues.slice();
+      const rm = state.mainChart.rangeMonths;
+      if(rm !== 'all'){ const n = Number(rm); if(!isNaN(n) && n>0){ labels = allLabels.slice(-n); values = allValues.slice(-n); } }
+
+      const displayLabels = labels.map(m=>{ const [y,mm]=m.split('-'); const d=new Date(Number(y),Number(mm)-1,1); return `${d.toLocaleString('pt-BR',{month:'short'})}/${y}`; });
+
+      let cumulativeValues = null; if(state.mainChart.cumulative){ cumulativeValues=[]; let s=0; values.forEach(v=>{ s+=Number(v||0); cumulativeValues.push(s); }); }
+      let maValues = null; if(state.mainChart.movingAverage){ maValues = movingAverage(values.map(v=>Number(v||0)), state.settings.movingAverageWindow); }
+
+      const maxVal = Math.max(...values.map(v=>Number(v||0))); const minVal = Math.min(...values.map(v=>Number(v||0)));
+      const pointBG = values.map(v=> Number(v||0) === 0 ? '#dc3545' : '#0d6efd');
+      const pointRadius = values.map(v=>{ const n = Number(v||0); if(n===0) return 5; if(n===maxVal||n===minVal) return 7; return 4; });
+
+      const gradient = ctx.createLinearGradient(0,0,0,400); gradient.addColorStop(0,'rgba(13,110,253,0.18)'); gradient.addColorStop(1,'rgba(13,110,253,0.02)');
+
+      const datasets = [{
+        label:'Receita',
+        data: values.map(v=>Number(v||0)),
+        borderColor:'#0d6efd',
+        backgroundColor: gradient,
+        fill:true,
+        tension:0.33,
+        borderWidth:3,
+        pointBackgroundColor: pointBG,
+        pointRadius: pointRadius,
+        pointHoverRadius:8,
+        hoverBorderColor:'#0b5ed7'
+      }];
+
+      if(maValues) datasets.push({ label:`Média Móvel (${state.settings.movingAverageWindow})`, data: maValues, borderColor:'#198754', backgroundColor:'rgba(25,135,84,0.06)', fill:false, borderDash:[6,4], tension:0.2, borderWidth:2, pointRadius:0 });
+      if(cumulativeValues) datasets.push({ label:'Cumulativo', data:cumulativeValues, borderColor:'#fd7e14', backgroundColor:'rgba(253,126,20,0.04)', fill:false, tension:0.2, borderWidth:2, pointRadius:0 });
+
+      const chart = new Chart(ctx, {
+        type:'line',
+        data:{ labels: displayLabels, datasets },
+        options:{
+          responsive:true, maintainAspectRatio:false, animation:{easing:'easeOutQuart',duration:700},
+          interaction:{mode:'index',intersect:false},
+          plugins:{
+            legend:{ display:true, position:'top' },
+            tooltip:{
+              enabled:true,
+              callbacks:{
+                title: (items)=> items[0].label,
+                label: (ctx)=> {
+                  const idx = ctx.dataIndex; const val = Number(ctx.dataset.data[idx]||0);
+                  const prev = idx>0?Number(ctx.chart.data.datasets[0].data[idx-1]||0):0;
+                  const delta = val - prev; const deltaPct = prev===0 ? (prev===val?0:100) : (delta/prev)*100;
+                  if(ctx.dataset.label === 'Receita'){
+                    const cum = state.mainChart.cumulative ? (state.mainChart.cumulative ? (chart.data.datasets.find(d=>d.label==='Cumulativo')||{}).data[idx] : null) : null;
+                    const parts = [`${formatBRL(val)}`]; parts.push(`Δ ${delta>=0?'+':''}${formatBRL(delta)} (${deltaPct.toFixed(1)}%)`); if(cum!=null) parts.push(`Cumul: ${formatBRL(cum)}`); return parts;
+                  } else return `${ctx.dataset.label}: ${formatBRL(val)}`;
+                }
+              }
+            },
+            zoom:{
+              pan:{enabled:true,mode:'x',modifierKey:'ctrl'},
+              zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'},
+              limits:{ x:{min:'original', max:'original'} }
+            }
+          },
+          scales:{
+            x:{ display:true, ticks:{maxRotation:0, autoSkip:true, maxTicksLimit:18}, grid:{display:false} },
+            y:{ display:true, ticks:{ callback: v => v === 0 ? 'R$ 0,00' : formatBRL(Number(v)) }, beginAtZero:true }
+          }
+        }
+      });
+
+      state.charts.mainLine = chart;
+      const totalVisible = values.reduce((s,v)=>s+Number(v||0),0);
+      $('#mainChartSummary').textContent = `Período exibido: ${displayLabels[0]||'-'} → ${displayLabels[displayLabels.length-1]||'-'} • Total: ${formatBRL(totalVisible)}`;
+    }
+
+    // Secondary charts simple renderers
+    function renderBarChart(id, title, dataArr, horizontal=false, topN=null){
+      const el = document.querySelector(id); if(!el) return; const ctx = el.getContext('2d'); destroyChart(id);
+      let arr = dataArr.slice(); if(topN) arr = arr.slice(0, topN);
+      const labels = arr.map(a=>a.key); const values = arr.map(a=>a.value);
+      state.charts[id] = new Chart(ctx, { type: horizontal ? 'bar' : 'bar', data:{ labels, datasets:[{label:title, data:values, backgroundColor:'#198754'}] }, options:{ indexAxis: horizontal ? 'y' : 'x', responsive:true, plugins:{ tooltip:{ callbacks:{ label: ctx => formatBRL(ctx.raw) } } } } });
+    }
+    function renderPie(id, title, dataArr){
+      const el = document.querySelector(id); if(!el) return; const ctx = el.getContext('2d'); destroyChart(id);
+      const arr = dataArr.slice(0,20); const labels = arr.map(a=>a.key); const values = arr.map(a=>a.value);
+      state.charts[id] = new Chart(ctx, { type:'doughnut', data:{ labels, datasets:[{ data: values, backgroundColor: generatePalette(values.length) }] }, options:{ responsive:true, plugins:{ tooltip:{ callbacks:{ label: ctx => `${ctx.label}: ${formatBRL(ctx.raw)}` } } } } });
+    }
+    function renderLineFromSeries(id, labels, values){
+      const el = document.querySelector(id); if(!el) return; const ctx = el.getContext('2d'); destroyChart(id);
+      state.charts[id] = new Chart(ctx, { type:'line', data:{ labels, datasets:[{ label:'Receita', data: values, borderColor:'#ff7b00', backgroundColor:'rgba(255,123,0,0.08)', fill:true, tension:0.3 }] }, options:{ responsive:true, plugins:{ tooltip:{ mode:'index' } } } });
+    }
+
+    // Filters UI (Tom Select)
+    function initFilters(){
+      const rows = state.rows;
+      const unique = (fn) => Array.from(new Set(rows.map(fn).filter(v=>v!=null && v!==''))).sort((a,b)=>String(a).localeCompare(String(b)));
+      const fieldsMap = [ {id:'#filterEmpresa', fn:r=>r.Empresa}, {id:'#filterCliente', fn:r=>r.Cliente}, {id:'#filterCentro', fn:r=>r.Centro}, {id:'#filterUnidade', fn:r=>r.Unidade}, {id:'#filterOrigem', fn:r=>r.Origem}, {id:'#filterStatus', fn:r=>r.Status}, {id:'#filterOperacao', fn:r=>r.Operacao}, {id:'#filterPortador', fn:r=>r.Portador} ];
+      for(const fm of fieldsMap){ const el = document.querySelector(fm.id); if(!el) continue; el.innerHTML=''; const vals = unique(fm.fn); vals.forEach(v=>{ const o=document.createElement('option'); o.value=String(v); o.text=String(v); el.appendChild(o); }); if(el.tom){ el.tom.destroy(); } el.tom = new TomSelect(el,{plugins:['remove_button'], maxOptions:1000, persist:false, create:false}); el.addEventListener('change', onFilterChanged); }
+      const anos = Array.from(new Set(state.rows.map(r=>r.DataBaixa? r.DataBaixa.getFullYear():null).filter(Boolean))).sort();
+      const anoEl = document.querySelector('#filterAno'); if(anoEl){ anoEl.innerHTML=''; anos.forEach(a=>{ const o=document.createElement('option'); o.value=a; o.text=a; anoEl.appendChild(o); }); if(anoEl.tom) anoEl.tom.destroy(); anoEl.tom = new TomSelect(anoEl,{plugins:['remove_button']}); anoEl.addEventListener('change', onFilterChanged); }
+      const trimestres = ['1','2','3','4']; const tEl = document.querySelector('#filterTrimestre'); if(tEl){ tEl.innerHTML=''; trimestres.forEach(q=>{ const o=document.createElement('option'); o.value=q; o.text='Q'+q; tEl.appendChild(o); }); if(tEl.tom) tEl.tom.destroy(); tEl.tom = new TomSelect(tEl,{plugins:['remove_button']}); tEl.addEventListener('change', onFilterChanged); }
+      const meses = Array.from({length:12},(_,i)=>({v:i+1,t:new Date(2000,i,1).toLocaleString('pt-BR',{month:'long'})}));
+      const mEl = document.querySelector('#filterMes'); if(mEl){ mEl.innerHTML=''; meses.forEach(m=>{ const o=document.createElement('option'); o.value=m.v; o.text=m.t; mEl.appendChild(o); }); if(mEl.tom) mEl.tom.destroy(); mEl.tom = new TomSelect(mEl,{plugins:['remove_button']}); mEl.addEventListener('change', onFilterChanged); }
+    }
+
+    function onFilterChanged(){
+      state.filters = {
+        Empresa: $('#filterEmpresa') && $('#filterEmpresa').tom ? $('#filterEmpresa').tom.getValue(true) : [],
+        Cliente: $('#filterCliente') && $('#filterCliente').tom ? $('#filterCliente').tom.getValue(true) : [],
+        Centro: $('#filterCentro') && $('#filterCentro').tom ? $('#filterCentro').tom.getValue(true) : [],
+        Unidade: $('#filterUnidade') && $('#filterUnidade').tom ? $('#filterUnidade').tom.getValue(true) : [],
+        Origem: $('#filterOrigem') && $('#filterOrigem').tom ? $('#filterOrigem').tom.getValue(true) : [],
+        Status: $('#filterStatus') && $('#filterStatus').tom ? $('#filterStatus').tom.getValue(true) : [],
+        Operacao: $('#filterOperacao') && $('#filterOperacao').tom ? $('#filterOperacao').tom.getValue(true) : [],
+        Portador: $('#filterPortador') && $('#filterPortador').tom ? $('#filterPortador').tom.getValue(true) : [],
+        Ano: $('#filterAno') && $('#filterAno').tom ? $('#filterAno').tom.getValue(true) : [],
+        Trimestre: $('#filterTrimestre') && $('#filterTrimestre').tom ? $('#filterTrimestre').tom.getValue(true) : [],
+        Mes: $('#filterMes') && $('#filterMes').tom ? $('#filterMes').tom.getValue(true) : []
+      };
+      updateDashboard();
+    }
+
+    function clearFilters(){
+      $$('#filtersForm select').forEach(s=>{ if(s.tom) s.tom.clear(); else s.value=''; });
+      state.filters = {}; updateDashboard();
+    }
+
+    // Update dashboard
+    function updateDashboard(){
+      aggregateData(); renderCards(); renderMainLine();
+      renderBarChart('#chartEmpresa','Empresa', state.aggregated.byEmpresa);
+      renderBarChart('#chartCentro','Centro de Custo', state.aggregated.byCentro, true);
+      renderBarChart('#chartClientes','Clientes (Top 15)', state.aggregated.byCliente, false, 15);
+      renderPie('#chartOrigem','Origem', state.aggregated.byOrigem);
+      renderBarChart('#chartUnidade','Unidade', state.aggregated.byUnidade);
+      renderBarChart('#chartStatus','Status', state.aggregated.byStatus);
+      renderPie('#chartInadimplencia','Inadimplência',[{key:'Adimplente',value:state.aggregated.inadimplencia.adimplente},{key:'Inadimplente',value:state.aggregated.inadimplencia.inadimplente}]);
+      renderLineFromSeries('#chartAnual', state.aggregated.anualSeries.labels, state.aggregated.anualSeries.values);
+      renderBarChart('#chartTrimestral','Trimestral', state.aggregated.trimestralSeries.labels.map((l,i)=>({key:l,value:state.aggregated.trimestralSeries.values[i]})));
+    }
+
+    // Exports
+    function exportFilteredToCSV(){
+      const rows = state.aggregated.filteredRows || []; if(rows.length===0){ alert('Sem dados para exportar.'); return; }
+      const header = Object.keys(rows[0]).filter(k=>!k.startsWith('__'));
+      const csv = [header.join(';')].concat(rows.map(r=> header.map(h=>{ const v=r[h]; if(v instanceof Date) return v.toLocaleDateString('pt-BR'); return String(v).replace(/;/g,','); }).join(';'))).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`dados_filtrados_${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+    async function exportDashboardPNG(){
+      const el = document.getElementById('dashboard');
+      const canvas = await html2canvas(el, {scale:2}); const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a'); a.href = url; a.download = `dashboard_${Date.now()}.png`; document.body.appendChild(a); a.click(); a.remove();
+    }
+    function exportMainSeriesCSV(){
+      const allLabels = state.aggregated.monthSeries.labels.slice(); const allValues = state.aggregated.monthSeries.values.slice();
+      let labels = allLabels.slice(), values = allValues.slice(); const rm = state.mainChart.rangeMonths;
+      if(rm !== 'all'){ const n = Number(rm); if(!isNaN(n) && n>0){ labels = allLabels.slice(-n); values = allValues.slice(-n); } }
+      const csvRows = [['Período','Valor']].concat(labels.map((lab,i)=>[lab, String(values[i]||0)])); const csv = csvRows.map(r=>r.join(';')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`serie_receita_${Date.now()}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    }
+
+    // Theme
+    function toggleTheme(){ document.body.classList.toggle('dark'); const isDark=document.body.classList.contains('dark'); localStorage.setItem('df_theme_dark', isDark?'1':'0'); $('#themeToggle').textContent = isDark ? 'Modo Claro' : 'Modo Escuro'; }
+    function loadTheme(){ const v = localStorage.getItem('df_theme_dark'); if(v==='1') document.body.classList.add('dark'); $('#themeToggle').textContent = document.body.classList.contains('dark') ? 'Modo Claro' : 'Modo Escuro'; }
+
+    // Events & boot
+    function attachEvents(){
+      $('#fileInput').addEventListener('change', (e)=>{ const file=e.target.files[0]; if(file) handleFile(file); });
+      $('#clearFilters').addEventListener('click', clearFilters);
+      $('#exportCSV').addEventListener('click', exportFilteredToCSV);
+      $('#exportPNG').addEventListener('click', exportDashboardPNG);
+      $('#themeToggle').addEventListener('click', toggleTheme);
+      $$('.main-chart-card .btn-group .btn').forEach(b=>{ b.addEventListener('click', ()=>{ $$('.main-chart-card .btn-group .btn').forEach(bb=>bb.classList.remove('active')); b.classList.add('active'); const range = b.getAttribute('data-range'); state.mainChart.rangeMonths = range === 'all' ? 'all' : Number(range); renderMainLine(); }); });
+      $('#toggleMA').addEventListener('change', (e)=>{ state.mainChart.movingAverage = e.target.checked; renderMainLine(); });
+      $('#toggleCum').addEventListener('change', (e)=>{ state.mainChart.cumulative = e.target.checked; renderMainLine(); });
+      $('#resetZoom').addEventListener('click', ()=>{ if(state.charts.mainLine && state.charts.mainLine.resetZoom) state.charts.mainLine.resetZoom(); });
+      $('#exportSeries').addEventListener('click', exportMainSeriesCSV);
+    }
+
+    function boot(){ attachEvents(); loadTheme(); /* placeholder: no data until upload */ }
+
+    boot();
+  })();
+  </script>
+</body>
+</html>
